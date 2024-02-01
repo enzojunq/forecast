@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 import streamlit as st
+import pydeck as pdk
 import plotly.express as px
 
 # wide mode
@@ -205,78 +206,163 @@ if uploaded_file is not None:
     vendas_coordenadas.drop('Filial', axis=1, inplace=True)
 
 
+    vendas_dia, vendas_mes, mapa_tab= st.tabs(["Vendas por Dia", "Vendas por Mês","Mapa de Filiais"])
+    with vendas_dia:
+        # Exibindo o valor de lambda
+        # col1.success(f'lambda: {lambda_value:.4f}')
 
-    # Exibindo o valor de lambda
-    # col1.success(f'lambda: {lambda_value:.4f}')
+        # Filtros de data
+        data_inicio = col2.date_input("Data de início", datetime(2023, 1, 1))
+        data_fim = col2.date_input("Data de fim", datetime(2023, 12, 31))
 
-    # Filtros de data
-    data_inicio = col2.date_input("Data de início", datetime(2023, 1, 1))
-    data_fim = col2.date_input("Data de fim", datetime(2023, 12, 31))
+        # Filtrando as vendas atuais, previsões e previsões do Excel
+        vendas_filtradas = vendas_por_dia[(vendas_por_dia['Data'] >= pd.to_datetime(data_inicio)) &
+                                        (vendas_por_dia['Data'] <= pd.to_datetime(data_fim))]
+        forecast_excel_filtrado = previsao_vendas[(previsao_vendas['Data'] >= pd.to_datetime(data_inicio)) &
+                                                (previsao_vendas['Data'] <= pd.to_datetime(data_fim))]
+        modelo_filtrado = modelo[(modelo['Data'] >= pd.to_datetime(data_inicio)) &
+                                                (modelo['Data'] <= pd.to_datetime(data_fim))]
 
-    # Filtrando as vendas atuais, previsões e previsões do Excel
-    vendas_filtradas = vendas_por_dia[(vendas_por_dia['Data'] >= pd.to_datetime(data_inicio)) &
-                                      (vendas_por_dia['Data'] <= pd.to_datetime(data_fim))]
-    forecast_excel_filtrado = previsao_vendas[(previsao_vendas['Data'] >= pd.to_datetime(data_inicio)) &
-                                              (previsao_vendas['Data'] <= pd.to_datetime(data_fim))]
-    modelo_filtrado = modelo[(modelo['Data'] >= pd.to_datetime(data_inicio)) &
-                                              (modelo['Data'] <= pd.to_datetime(data_fim))]
+        # Criando o gráfico interativo com Plotly
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=vendas_filtradas['Data'], y=vendas_filtradas['Número de Vendas'],
+                                mode='lines', name='Vendas Atuais'))
+        fig.add_trace(go.Scatter(x=modelo_filtrado['Data'], y=modelo_filtrado['Forecast'],
+                                mode='lines+markers', name='Modelo', line=dict(dash='dot')))
+        fig.add_trace(go.Scatter(x=forecast_excel_filtrado['Data'], y=forecast_excel_filtrado['Forecast'],
+                                mode='lines+markers', name='Previsão', line=dict(dash='dot')))
 
-    # Criando o gráfico interativo com Plotly
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=vendas_filtradas['Data'], y=vendas_filtradas['Número de Vendas'],
-                             mode='lines', name='Vendas Atuais'))
-    fig.add_trace(go.Scatter(x=modelo_filtrado['Data'], y=modelo_filtrado['Forecast'],
-                             mode='lines+markers', name='Modelo', line=dict(dash='dot')))
-    fig.add_trace(go.Scatter(x=forecast_excel_filtrado['Data'], y=forecast_excel_filtrado['Forecast'],
-                             mode='lines+markers', name='Previsão', line=dict(dash='dot')))
+        fig.update_layout(title='Vendas Atuais vs Previsão de Vendas',
+                        xaxis_title='Data',
+                        yaxis_title='Vendas',
+                        hovermode='x unified')
 
-    fig.update_layout(title='Vendas Atuais vs Previsão de Vendas',
-                      xaxis_title='Data',
-                      yaxis_title='Vendas',
-                      hovermode='x unified')
+        st.plotly_chart(fig, use_container_width=True)
+        
+        col11,col22 = st.columns(2)
+        
+        # Adicionando um seletor de data para escolher uma data específica
+        data_escolhida = col11.date_input("Escolha uma data para ver a previsão de vendas", datetime.now())
 
-    st.plotly_chart(fig, use_container_width=True)
+        # Filtrando as previsões para a data escolhida
+        previsao_especifica = previsao_vendas[previsao_vendas['Data'] == pd.to_datetime(data_escolhida)]
+
+        # Verificando se há dados para a data selecionada e exibindo a previsão
+        if not previsao_especifica.empty:
+            venda_prevista = previsao_especifica['Forecast'].values[0]
+            col22.metric(label="Previsão de Vendas", value=f"{venda_prevista:.2f} unidades")
+
+        else:
+            st.write("Não há previsão disponível para esta data.")
+            
+        
+        # Adicionando um seletor de número de dias para a previsão
+        dias_previsao = col11.number_input('Selecione o número de dias para previsão', step=1)
+
+        # hoje
+        hoje = datetime.now()
+        
+        # Calculando a data final baseada na data escolhida e no número de dias selecionados
+        data_final_previsao = hoje + pd.Timedelta(days=dias_previsao - 0)
+        print(data_escolhida)
+        # Filtrando as previsões para o período selecionado
+        previsoes_periodo = previsao_vendas[(previsao_vendas['Data'] >= pd.to_datetime(hoje)) &
+                                            (previsao_vendas['Data'] <= pd.to_datetime(data_final_previsao))]
+
+        # Calculando a soma das vendas previstas para o período
+        total_vendas_previstas = previsoes_periodo['Forecast'].sum()
+
+        # Exibindo a soma das vendas previstas para o período selecionado
+        col22.metric(label=f"Previsão de Vendas para os próximos {dias_previsao} dias", value=f"{total_vendas_previstas:.2f} unidades")
+
     
-    col11,col22 = st.columns(2)
-    
-    # Adicionando um seletor de data para escolher uma data específica
-    data_escolhida = col11.date_input("Escolha uma data para ver a previsão de vendas", datetime.now())
+    def calcular_wmape(vendas_reais, vendas_previstas):
+        erro_absoluto = abs(vendas_reais - vendas_previstas)
+        total_absoluto_erro = erro_absoluto.sum()
+        total_vendas = vendas_reais.sum()
+        wmape = total_absoluto_erro / total_vendas
+        return wmape
 
-    # Filtrando as previsões para a data escolhida
-    previsao_especifica = previsao_vendas[previsao_vendas['Data'] == pd.to_datetime(data_escolhida)]
-
-    # Verificando se há dados para a data selecionada e exibindo a previsão
-    if not previsao_especifica.empty:
-        venda_prevista = previsao_especifica['Forecast'].values[0]
-        col22.metric(label="Previsão de Vendas", value=f"{venda_prevista:.2f} unidades")
-
-    else:
-        st.write("Não há previsão disponível para esta data.")
+    # Supondo que 'vendas_por_dia' tenha uma coluna 'Número de Vendas' para vendas reais
+    # e 'previsao_modelo' tenha uma coluna 'Forecast' para vendas previstas
+    # Certifique-se de que ambos os DataFrames estão alinhados por data antes de chamar a função
+    wmape = calcular_wmape(vendas_por_dia['Número de Vendas'], modelo['Forecast'])
+    print(f"WMAPE: {wmape:.5f}")
     
     
+    with vendas_mes:
+        # Supondo que 'Número de Vendas' é a coluna com os valores numéricos
+        vendas_por_mes = vendas_por_dia.groupby(vendas_por_dia['Data'].dt.to_period("M"))['Número de Vendas'].sum().reset_index()
+        previsao_por_mes = previsao_vendas.groupby(previsao_vendas['Data'].dt.to_period("M"))['Forecast'].sum().reset_index()
+
+        # Converter 'Data' para formato de data
+        vendas_por_mes['Data'] = vendas_por_mes['Data'].dt.to_timestamp()
+        previsao_por_mes['Data'] = previsao_por_mes['Data'].dt.to_timestamp()
+
+        # Criar DataFrame para o gráfico
+        df_bar = pd.merge(vendas_por_mes, previsao_por_mes, on='Data', how='outer', suffixes=('_real', '_previsto'))
+
+        # Criar o gráfico de barras
+        fig_bar = px.line(df_bar, x='Data', y=['Número de Vendas', 'Forecast'],
+                        labels={'value':'Número de Vendas', 'Data':'Mês'},
+                        title="Comparação Mensal de Vendas Reais e Previstas")
+        st.plotly_chart(fig_bar, use_container_width=True)
+        
+        col1, col2 = st.columns(2)
     
-    
+        # Adicionando um seletor de mês e ano
+        mes_escolhido = col1.selectbox("Escolha o mês", range(1, 13), format_func=lambda x: datetime(1900, x, 1).strftime('%B'))
+        ano_escolhido = 2024
+        
+        # Convertendo para o primeiro dia do mês escolhido
+        data_escolhida = datetime(ano_escolhido, mes_escolhido, 1)
+        
+        # Filtrando as previsões para o mês escolhido
+        previsao_especifica_mes = previsao_vendas[previsao_vendas['Data'].dt.year == ano_escolhido][previsao_vendas['Data'].dt.month == mes_escolhido]
 
-    # Supondo que 'Número de Vendas' é a coluna com os valores numéricos
-    vendas_por_mes = vendas_por_dia.groupby(vendas_por_dia['Data'].dt.to_period("M"))['Número de Vendas'].sum().reset_index()
-    previsao_por_mes = previsao_vendas.groupby(previsao_vendas['Data'].dt.to_period("M"))['Forecast'].sum().reset_index()
+        # Verificando se há dados para o mês selecionado e exibindo a previsão
+        if not previsao_especifica_mes.empty:
+            venda_prevista_mes = previsao_especifica_mes['Forecast'].sum()  # Soma de todas as previsões para o mês
+            col2.metric(label=f"Previsão de Vendas para {data_escolhida.strftime('%B %Y')}", value=f"{venda_prevista_mes:.2f} unidades")
+        else:
+            col2.write("Não há previsão disponível para este mês.")
+        
+    with mapa_tab:
+        
+        
+        # Organiza o DataFrame para obter as 5 maiores filiais
+        top_5_vendas = vendas_coordenadas.sort_values(by='Quantidade de Vendas', ascending=False).head(5)
 
-    # Converter 'Data' para formato de data
-    vendas_por_mes['Data'] = vendas_por_mes['Data'].dt.to_timestamp()
-    previsao_por_mes['Data'] = previsao_por_mes['Data'].dt.to_timestamp()
+        # Configura o layout com duas colunas: mapa à esquerda, ranking à direita
+        col_mapa, col_ranking = st.columns([3, 1])  # Ajusta as proporções conforme necessário
 
-    # Criar DataFrame para o gráfico
-    df_bar = pd.merge(vendas_por_mes, previsao_por_mes, on='Data', how='outer', suffixes=('_real', '_previsto'))
+        with col_mapa:
+            # Ajusta o raio proporcional à "Quantidade de Vendas"
+            vendas_coordenadas['raio'] = vendas_coordenadas['Quantidade de Vendas'] * 500  # Ajuste conforme necessário
 
-    # Criar o gráfico de barras
-    fig_bar = px.line(df_bar, x='Data', y=['Número de Vendas', 'Forecast'],
-                    labels={'value':'Número de Vendas', 'Data':'Mês'},
-                    title="Comparação Mensal de Vendas Reais e Previstas")
-    st.plotly_chart(fig_bar, use_container_width=True)
+            # Configuração do mapa PyDeck
+            mapa = pdk.Deck(
+                map_style='mapbox://styles/mapbox/light-v9',
+                initial_view_state=pdk.ViewState(
+                    latitude=vendas_coordenadas['latitude'].mean(),
+                    longitude=vendas_coordenadas['longitude'].mean(),
+                    zoom=5,
+                    pitch=0,
+                ),
+                layers=[
+                    pdk.Layer(
+                        "ScatterplotLayer",
+                        data=vendas_coordenadas,
+                        get_position="[longitude, latitude]",
+                        get_radius="raio",
+                        get_color="[200, 30, 0, 160]",
+                        pickable=True,
+                    ),
+                ],
+            )
 
-    # Exibindo as localizações no mapa
-    
-    latitude = vendas_coordenadas['latitude']
-    longitude = vendas_coordenadas['longitude']
-    tamanhos = vendas_coordenadas['Quantidade de Vendas']
-    st.map(vendas_coordenadas[['latitude', 'longitude', 'Quantidade de Vendas']])
+            st.pydeck_chart(mapa, use_container_width=True)
+
+        with col_ranking:
+            st.write("Top 5 Filiais com Mais Vendas")
+            st.table(top_5_vendas[['Franqueada', 'Quantidade de Vendas']])

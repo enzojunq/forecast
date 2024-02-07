@@ -213,7 +213,7 @@ if uploaded_file is not None:
 
         # Filtros de data
         data_inicio = col2.date_input("Data de início", datetime(2023, 1, 1))
-        data_fim = col2.date_input("Data de fim", datetime(2023, 12, 31))
+        data_fim = col2.date_input("Data de fim", datetime(2024, 12, 31))
 
         # Filtrando as vendas atuais, previsões e previsões do Excel
         vendas_filtradas = vendas_por_dia[(vendas_por_dia['Data'] >= pd.to_datetime(data_inicio)) &
@@ -363,6 +363,6 @@ if uploaded_file is not None:
 
             st.pydeck_chart(mapa, use_container_width=True)
 
-        with col_ranking:
-            st.write("Top 5 Filiais com Mais Vendas")
-            st.table(top_5_vendas[['Franqueada', 'Quantidade de Vendas']])
+        # with col_ranking:
+        #     st.write("Top 5 Filiais com Mais Vendas")
+        #     st.table(top_5_vendas[['Franqueada', 'Quantidade de Vendas']])

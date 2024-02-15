@@ -140,9 +140,10 @@ def calcular_previsao_vendas(file_path, file_path_features, file_path_forecast, 
     vendas_for_regression = vendas_por_dia['Número de Vendas'].reset_index(drop=True)
 
     # Treinando o modelo e fazendo previsões
-    modelo = regressao(features_for_regression, vendas_for_regression)
+    modelo = regressao(features_for_regression[:len(vendas_for_regression)], vendas_for_regression)
+    
     efeitos_passados = modelo.predict(sm.add_constant(features_for_regression))
-
+    
     # Preparando colunas Alpha e Beta
     vendas = vendas_por_dia.copy()
     vendas['Alpha'] = vendas['Número de Vendas'] / efeitos_passados
@@ -206,22 +207,55 @@ if uploaded_file is not None:
     vendas_coordenadas.drop('Filial', axis=1, inplace=True)
 
 
-    vendas_dia, vendas_mes, mapa_tab= st.tabs(["Vendas por Dia", "Vendas por Mês","Mapa de Filiais"])
+    # Exibindo o valor de lambda
+    # col1.success(f'lambda: {lambda_value:.4f}')
+    
+    # Definindo as datas de início e fim para o slider
+    data_i = datetime(2023, 1, 1)
+    data_f = datetime(2024, 12, 31)
+
+    # Usando st.slider para selecionar um intervalo de datas
+    intervalo_datas = col2.slider("Selecione o intervalo de datas:",
+                                min_value=data_i,
+                                max_value=data_f,
+                                value=(data_i, data_f),
+                                format="MM/DD/YYYY")
+
+    # Desempacotando as datas selecionadas
+    data_inicio, data_fim = intervalo_datas
+    
+    # Filtrando as vendas atuais, previsões e previsões do Excel
+    vendas_filtradas = vendas_por_dia[(vendas_por_dia['Data'] >= pd.to_datetime(data_inicio)) &
+                                    (vendas_por_dia['Data'] <= pd.to_datetime(data_fim))]
+    forecast_excel_filtrado = previsao_vendas[(previsao_vendas['Data'] >= pd.to_datetime(data_inicio)) &
+                                            (previsao_vendas['Data'] <= pd.to_datetime(data_fim))]
+    modelo_filtrado = modelo[(modelo['Data'] >= pd.to_datetime(data_inicio)) &
+                                            (modelo['Data'] <= pd.to_datetime(data_fim))]
+
+    
+    vendas_dia, vendas_mes, mapa_tab, tabelas= st.tabs(["Vendas por Dia", "Vendas por Mês","Mapa de Filiais", "Tabelas"])
+    with tabelas:
+        coltabela1,coltabela2,coltabela3 = st.columns([1,3,1])
+        coltabela2.markdown("### Previsão Diária")
+        coltabela2.dataframe(forecast_excel_filtrado.style.background_gradient(cmap='Blues', low=0, high=0.2), use_container_width=True, hide_index=True)
+        
+        
+        coltabela2.markdown("### Previsão Mensal")
+        # Supondo que 'Número de Vendas' é a coluna com os valores numéricos
+        vendas_por_mes = vendas_filtradas.groupby(vendas_filtradas['Data'].dt.to_period("M"))['Número de Vendas'].sum().reset_index()
+        previsao_por_mes = forecast_excel_filtrado.groupby(forecast_excel_filtrado['Data'].dt.to_period("M"))['Forecast'].sum().reset_index()
+
+        # Converter 'Data' para formato de data
+        vendas_por_mes['Data'] = vendas_por_mes['Data'].dt.to_timestamp()
+        previsao_por_mes['Data'] = previsao_por_mes['Data'].dt.to_timestamp()
+        coltabela2.dataframe(previsao_por_mes.style.background_gradient(cmap='Blues', low=0, high=0.2), use_container_width=True, hide_index=True)
+       
+        
+        
     with vendas_dia:
-        # Exibindo o valor de lambda
-        # col1.success(f'lambda: {lambda_value:.4f}')
+        
 
-        # Filtros de data
-        data_inicio = col2.date_input("Data de início", datetime(2023, 1, 1))
-        data_fim = col2.date_input("Data de fim", datetime(2024, 12, 31))
 
-        # Filtrando as vendas atuais, previsões e previsões do Excel
-        vendas_filtradas = vendas_por_dia[(vendas_por_dia['Data'] >= pd.to_datetime(data_inicio)) &
-                                        (vendas_por_dia['Data'] <= pd.to_datetime(data_fim))]
-        forecast_excel_filtrado = previsao_vendas[(previsao_vendas['Data'] >= pd.to_datetime(data_inicio)) &
-                                                (previsao_vendas['Data'] <= pd.to_datetime(data_fim))]
-        modelo_filtrado = modelo[(modelo['Data'] >= pd.to_datetime(data_inicio)) &
-                                                (modelo['Data'] <= pd.to_datetime(data_fim))]
 
         # Criando o gráfico interativo com Plotly
         fig = go.Figure()
@@ -238,6 +272,90 @@ if uploaded_file is not None:
                         hovermode='x unified')
 
         st.plotly_chart(fig, use_container_width=True)
+        
+        coluna1,coluna2 = st.columns(2)
+        
+        if not vendas_filtradas.empty:
+            # Supondo que 'df_vendas' é o seu DataFrame e 'Data' é a coluna com as datas das vendas
+            vendas_filtradas['Dia da Semana'] = vendas_filtradas['Data'].dt.day_name()
+            vendas_por_dia_da_semana = vendas_filtradas.groupby('Dia da Semana')['Número de Vendas'].sum().reset_index()
+
+            # Organizando os dias da semana na ordem correta
+            categorias_dias = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            vendas_por_dia_da_semana['Dia da Semana'] = pd.Categorical(vendas_por_dia_da_semana['Dia da Semana'], categories=categorias_dias, ordered=True)
+            vendas_por_dia_da_semana = vendas_por_dia_da_semana.sort_values('Dia da Semana')
+
+            # Encontrando o dia com mais vendas
+            dia_mais_vendas = vendas_por_dia_da_semana.loc[vendas_por_dia_da_semana['Número de Vendas'].idxmax()]
+            # Para o dia da semana com mais vendas
+            coluna1.metric(label="Dia da Semana com Mais Vendas",
+                    value=dia_mais_vendas['Dia da Semana'],
+                    delta=f"{dia_mais_vendas['Número de Vendas']} vendas")
+            
+            
+            def periodo_do_mes(dia):
+                if dia <= 10:
+                    return 'Início'
+                elif dia <= 20:
+                    return 'Meio'
+                else:
+                    return 'Fim'
+
+            vendas_filtradas['Período do Mês'] = vendas_filtradas['Data'].dt.day.apply(periodo_do_mes)
+            vendas_por_periodo = vendas_filtradas.groupby('Período do Mês')['Número de Vendas'].sum().reset_index()
+
+            # Organizando os períodos em ordem específica
+            vendas_por_periodo['Período do Mês'] = pd.Categorical(vendas_por_periodo['Período do Mês'], categories=['Início', 'Meio', 'Fim'], ordered=True)
+            vendas_por_periodo = vendas_por_periodo.sort_values('Período do Mês')
+
+            # Encontrando o período com mais vendas
+            periodo_mais_vendas = vendas_por_periodo.loc[vendas_por_periodo['Número de Vendas'].idxmax()]
+            
+            # Para o período do mês com mais vendas
+            coluna2.metric(label="Período do Mês com Mais Vendas",
+                    value=periodo_mais_vendas['Período do Mês'],
+                    delta=f"{periodo_mais_vendas['Número de Vendas']} vendas")
+        else:
+            # Supondo que 'df_vendas' é o seu DataFrame e 'Data' é a coluna com as datas das vendas
+            forecast_excel_filtrado['Dia da Semana'] = forecast_excel_filtrado['Data'].dt.day_name()
+            vendas_por_dia_da_semana = forecast_excel_filtrado.groupby('Dia da Semana')['Forecast'].sum().reset_index()
+
+            # Organizando os dias da semana na ordem correta
+            categorias_dias = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            vendas_por_dia_da_semana['Dia da Semana'] = pd.Categorical(vendas_por_dia_da_semana['Dia da Semana'], categories=categorias_dias, ordered=True)
+            vendas_por_dia_da_semana = vendas_por_dia_da_semana.sort_values('Dia da Semana')
+
+            # Encontrando o dia com mais vendas
+            dia_mais_vendas = vendas_por_dia_da_semana.loc[vendas_por_dia_da_semana['Forecast'].idxmax()]
+            # Para o dia da semana com mais vendas
+            coluna1.metric(label="Dia da Semana com a Maior Previsão de Vendas",
+                    value=dia_mais_vendas['Dia da Semana'],
+                    delta=f"{dia_mais_vendas['Forecast']:.4} vendas")
+            
+            def periodo_do_mes(dia):
+                if dia <= 10:
+                    return 'Início'
+                elif dia <= 20:
+                    return 'Meio'
+                else:
+                    return 'Fim'
+
+            forecast_excel_filtrado['Período do Mês'] = forecast_excel_filtrado['Data'].dt.day.apply(periodo_do_mes)
+            vendas_por_periodo = forecast_excel_filtrado.groupby('Período do Mês')['Forecast'].sum().reset_index()
+
+            # Organizando os períodos em ordem específica
+            vendas_por_periodo['Período do Mês'] = pd.Categorical(vendas_por_periodo['Período do Mês'], categories=['Início', 'Meio', 'Fim'], ordered=True)
+            vendas_por_periodo = vendas_por_periodo.sort_values('Período do Mês')
+
+            # Encontrando o período com mais vendas
+            periodo_mais_vendas = vendas_por_periodo.loc[vendas_por_periodo['Forecast'].idxmax()]
+            
+            # Para o período do mês com mais vendas
+            coluna2.metric(label="Período do Mês com Maior Previsão de Vendas",
+                    value=periodo_mais_vendas['Período do Mês'],
+                    delta=f"{periodo_mais_vendas['Forecast']:.4} vendas")
+        
+        st.divider()
         
         col11,col22 = st.columns(2)
         
@@ -274,6 +392,10 @@ if uploaded_file is not None:
 
         # Exibindo a soma das vendas previstas para o período selecionado
         col22.metric(label=f"Previsão de Vendas para os próximos {dias_previsao} dias", value=f"{total_vendas_previstas:.2f} unidades")
+        
+        # tabela da previsao de vendas por dia colorida
+        st.dataframe(previsoes_periodo.style.background_gradient(cmap='Blues', low=0, high=0.2), use_container_width=True)
+        
 
     
     def calcular_wmape(vendas_reais, vendas_previstas):
@@ -292,8 +414,8 @@ if uploaded_file is not None:
     
     with vendas_mes:
         # Supondo que 'Número de Vendas' é a coluna com os valores numéricos
-        vendas_por_mes = vendas_por_dia.groupby(vendas_por_dia['Data'].dt.to_period("M"))['Número de Vendas'].sum().reset_index()
-        previsao_por_mes = previsao_vendas.groupby(previsao_vendas['Data'].dt.to_period("M"))['Forecast'].sum().reset_index()
+        vendas_por_mes = vendas_filtradas.groupby(vendas_filtradas['Data'].dt.to_period("M"))['Número de Vendas'].sum().reset_index()
+        previsao_por_mes = forecast_excel_filtrado.groupby(forecast_excel_filtrado['Data'].dt.to_period("M"))['Forecast'].sum().reset_index()
 
         # Converter 'Data' para formato de data
         vendas_por_mes['Data'] = vendas_por_mes['Data'].dt.to_timestamp()
@@ -336,33 +458,33 @@ if uploaded_file is not None:
         # Configura o layout com duas colunas: mapa à esquerda, ranking à direita
         col_mapa, col_ranking = st.columns([3, 1])  # Ajusta as proporções conforme necessário
 
-        with col_mapa:
-            # Ajusta o raio proporcional à "Quantidade de Vendas"
-            vendas_coordenadas['raio'] = vendas_coordenadas['Quantidade de Vendas'] * 500  # Ajuste conforme necessário
 
-            # Configuração do mapa PyDeck
-            mapa = pdk.Deck(
-                map_style='mapbox://styles/mapbox/light-v9',
-                initial_view_state=pdk.ViewState(
-                    latitude=vendas_coordenadas['latitude'].mean(),
-                    longitude=vendas_coordenadas['longitude'].mean(),
-                    zoom=5,
-                    pitch=0,
+        # Ajusta o raio proporcional à "Quantidade de Vendas"
+        vendas_coordenadas['raio'] = vendas_coordenadas['Quantidade de Vendas'] * 500  # Ajuste conforme necessário
+
+        # Configuração do mapa PyDeck
+        mapa = pdk.Deck(
+            map_style='mapbox://styles/mapbox/light-v9',
+            initial_view_state=pdk.ViewState(
+                latitude=vendas_coordenadas['latitude'].mean(),
+                longitude=vendas_coordenadas['longitude'].mean(),
+                zoom=5,
+                pitch=0,
+            ),
+            layers=[
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=vendas_coordenadas,
+                    get_position="[longitude, latitude]",
+                    get_radius="raio",
+                    get_color="[200, 30, 0, 160]",
+                    pickable=True,
                 ),
-                layers=[
-                    pdk.Layer(
-                        "ScatterplotLayer",
-                        data=vendas_coordenadas,
-                        get_position="[longitude, latitude]",
-                        get_radius="raio",
-                        get_color="[200, 30, 0, 160]",
-                        pickable=True,
-                    ),
-                ],
-            )
+            ],
+        )
 
-            st.pydeck_chart(mapa, use_container_width=True)
+        col_mapa.pydeck_chart(mapa)
 
-        # with col_ranking:
-        #     st.write("Top 5 Filiais com Mais Vendas")
-        #     st.table(top_5_vendas[['Franqueada', 'Quantidade de Vendas']])
+        with col_ranking:
+            st.write("Top 5 Filiais com Mais Vendas")
+            st.dataframe(vendas_coordenadas[['Franqueada','Quantidade de Vendas']].style.background_gradient(cmap='Blues', low=0, high=0.2), use_container_width=True, hide_index=True)

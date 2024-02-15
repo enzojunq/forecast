@@ -486,5 +486,4 @@ if uploaded_file is not None:
         col_mapa.pydeck_chart(mapa)
 
         with col_ranking:
-            st.write("Top 5 Filiais com Mais Vendas")
             st.dataframe(vendas_coordenadas[['Franqueada','Quantidade de Vendas']].style.background_gradient(cmap='Blues', low=0, high=0.2), use_container_width=True, hide_index=True)
